@@ -1,0 +1,326 @@
+import networkx as nx
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+
+
+class MultiSourceThreeFloorNavigator:
+    def __init__(self):
+        self.graph = nx.Graph()
+        self.floors = [1, 2, 3]
+
+        # Assets per floor: 4 stairs (A-D) and 1 lift (L)
+        self.assets = {
+            1: ['stair1A', 'stair1B', 'stair1C', 'stair1D', 'lift1'],
+            2: ['stair2A', 'stair2B', 'stair2C', 'stair2D', 'lift2'],
+            3: ['stair3A', 'stair3B', 'stair3C', 'stair3D', 'lift3'],
+        }
+
+        # All rooms and facilities
+        self.rooms = [
+            # Floor 1
+            'entrance1', 'room101', 'room102', 'room103', 'room104', 'room105', 'room106', 'room107', 'room108',
+            'room109', 'room110',
+            'room111', 'room112', 'room113', 'room114', 'room115', 'room116', 'room117', 'room118', 'room119',
+            'room120',
+            'f_bathroom1_1', 'f_bathroom1_2', 'm_bathroom1_1', 'm_bathroom1_2', 'watercooler1A', 'watercooler1B',
+            'staff1', 'exit1',
+            'stair1A', 'stair1B', 'stair1C', 'stair1D', 'lift1',
+            # Floor 2
+            'entrance2', 'room201', 'room202', 'room203', 'room204', 'room205', 'room206', 'room207', 'room208',
+            'room209', 'room210',
+            'room211', 'room212', 'room213', 'room214', 'room215', 'room216', 'room217', 'room218', 'room219',
+            'room220',
+            'f_bathroom2_1', 'f_bathroom2_2', 'm_bathroom2_1', 'm_bathroom2_2', 'watercooler2A', 'watercooler2B',
+            'staff2', 'exit2',
+            'stair2A', 'stair2B', 'stair2C', 'stair2D', 'lift2',
+            # Floor 3
+            'entrance3', 'room301', 'room302', 'room303', 'room304', 'room305', 'room306', 'room307', 'room308',
+            'room309', 'room310',
+            'room311', 'room312', 'room313', 'room314', 'room315', 'room316', 'room317', 'room318', 'room319',
+            'room320',
+            'f_bathroom3_1', 'f_bathroom3_2', 'm_bathroom3_1', 'm_bathroom3_2', 'watercooler3A', 'watercooler3B',
+            'staff3', 'exit3',
+            'stair3A', 'stair3B', 'stair3C', 'stair3D', 'lift3'
+        ]
+
+        # Room lists by floor
+        self.rooms_by_floor = {
+            1: [f'room1{str(i).zfill(2)}' for i in range(1, 21)],
+            2: [f'room2{str(i).zfill(2)}' for i in range(1, 21)],
+            3: [f'room3{str(i).zfill(2)}' for i in range(1, 21)],
+        }
+
+        # Other facilities by floor
+        self.specials = {
+            1: ['entrance1', 'exit1'],
+            2: ['entrance2', 'exit2'],
+            3: ['entrance3', 'exit3'],
+        }
+
+        self.bathrooms = {
+            1: ['f_bathroom1_1', 'f_bathroom1_2', 'm_bathroom1_1', 'm_bathroom1_2'],
+            2: ['f_bathroom2_1', 'f_bathroom2_2', 'm_bathroom2_1', 'm_bathroom2_2'],
+            3: ['f_bathroom3_1', 'f_bathroom3_2', 'm_bathroom3_1', 'm_bathroom3_2'],
+        }
+
+        self.watercoolers = {
+            1: ['watercooler1A', 'watercooler1B'],
+            2: ['watercooler2A', 'watercooler2B'],
+            3: ['watercooler3A', 'watercooler3B'],
+        }
+
+        self.staff = {1: 'staff1', 2: 'staff2', 3: 'staff3'}
+
+        self.positions = {}
+        self._build_positions()
+        self._build_graph()
+
+    def _build_positions(self):
+        spacing = 3
+        for f, y in zip(self.floors, [0, 15, 30]):  # More vertical spacing
+            # Rooms along corridor
+            for idx, r in enumerate(self.rooms_by_floor[f]):
+                self.positions[r] = (2 + idx * spacing, y)
+
+            # Bathrooms
+            bath_names = self.bathrooms[f]
+            bath_x = [2 + 5 * spacing + 1, 2 + 10 * spacing + 1, 2 + 15 * spacing + 1, 2 + 19 * spacing + 1]
+            for name, x in zip(bath_names, bath_x):
+                self.positions[name] = (x, y + (2 if name.startswith('f_') else -2))
+
+            # Entrance and exit
+            self.positions[self.specials[f][0]] = (0, y)
+            self.positions[self.specials[f][1]] = (2 + 21 * spacing, y)
+
+            # Water coolers
+            wcA, wcB = self.watercoolers[f]
+            self.positions[wcA] = (2 + 3 * spacing, y + 1.5)
+            self.positions[wcB] = (2 + 17 * spacing, y + 1.5)
+
+            # Staff building
+            self.positions[self.staff[f]] = (2 + 22 * spacing, y)
+
+            # Stairs and lift
+            asset_x = {'A': 5, 'B': 2 + 7 * spacing, 'C': 2 + 14 * spacing, 'D': 2 + 19 * spacing,
+                       'L': 2 + 11 * spacing}
+            for label, x in asset_x.items():
+                name = f'stair{f}{label}' if label != 'L' else f'lift{f}'
+                self.positions[name] = (x, y + (1.8 if label in ['B', 'D', 'L'] else -1.8))
+
+    def _build_graph(self):
+        for node, pos in self.positions.items():
+            self.graph.add_node(node, pos=pos)
+
+        # Floor connections
+        for f in self.floors:
+            linear = [self.specials[f][0]] + self.rooms_by_floor[f] + [self.specials[f][1], self.staff[f]]
+            for i in range(len(linear) - 1):
+                self.graph.add_edge(linear[i], linear[i + 1], weight=2)
+
+            # Connect facilities to nearby rooms
+            anchors_for_baths = [3, 9, 15, 19]
+            for name, idx in zip(self.bathrooms[f], anchors_for_baths):
+                anchor_room = self.rooms_by_floor[f][idx - 1]
+                self.graph.add_edge(name, anchor_room, weight=1)
+
+            wc_anchor_indices = [4, 17]
+            for name, idx in zip(self.watercoolers[f], wc_anchor_indices):
+                anchor_room = self.rooms_by_floor[f][idx - 1]
+                self.graph.add_edge(name, anchor_room, weight=1)
+
+            anchor_indices = {'A': 1, 'B': 7, 'C': 14, 'D': 19, 'L': 11}
+            for label, idx in anchor_indices.items():
+                anchor_room = self.rooms_by_floor[f][idx - 1]
+                asset = f'stair{f}{label}' if label != 'L' else f'lift{f}'
+                self.graph.add_edge(asset, anchor_room, weight=1)
+
+        # Vertical connections
+        for label in ['A', 'B', 'C', 'D']:
+            for f in [1, 2]:
+                self.graph.add_edge(f'stair{f}{label}', f'stair{f + 1}{label}', weight=1)
+        for f in [1, 2]:
+            self.graph.add_edge(f'lift{f}', f'lift{f + 1}', weight=1)
+
+    def _infer_floor(self, node):
+        if node.startswith('room') and len(node) >= 6 and node[4].isdigit():
+            return int(node[4])
+        if (node.startswith('entrance') or node.startswith('exit') or node.startswith('staff')) and node[-1].isdigit():
+            return int(node[-1])
+        if node.startswith('f_bathroom') or node.startswith('m_bathroom'):
+            return int(node.split('_')[1][0])
+        if node.startswith('stair') and len(node) > 5 and node[5].isdigit():
+            return int(node[5])
+        if node.startswith('lift') and node[-1].isdigit():
+            return int(node[-1])
+        if node.startswith('watercooler') and node[-2].isdigit():
+            return int(node[-2])
+        return 1
+
+    def suggest_nearest_source(self, destination):
+        dest_floor = self._infer_floor(destination)
+        candidates = [self.specials[dest_floor][0]] + self.assets[dest_floor]
+        best = None
+        for s in candidates:
+            try:
+                path = nx.shortest_path(self.graph, s, destination, weight='weight')
+                dist = nx.shortest_path_length(self.graph, s, destination, weight='weight')
+                if best is None or dist < best[1]:
+                    best = (s, dist, path)
+            except nx.NetworkXNoPath:
+                continue
+        return best
+
+    def find_route(self, start, destination):
+        try:
+            path = nx.shortest_path(self.graph, start, destination, weight='weight')
+            distance = nx.shortest_path_length(self.graph, start, destination, weight='weight')
+            return path, distance
+        except nx.NetworkXNoPath:
+            return None, None
+
+    def create_building_map_with_route(self, path=None, start_location='entrance1', destination=''):
+        """Create a comprehensive building map showing all 3 floors with route"""
+        fig, ax = plt.subplots(figsize=(28, 16))
+        pos = nx.get_node_attributes(self.graph, 'pos')
+
+        # Define colors for different node types
+        node_colors = {}
+        node_sizes = {}
+
+        for node in self.graph.nodes():
+            if node.startswith('room'):
+                node_colors[node] = 'lightblue'
+                node_sizes[node] = 400
+            elif node.startswith('entrance'):
+                node_colors[node] = 'green'
+                node_sizes[node] = 600
+            elif node.startswith('exit'):
+                node_colors[node] = 'orange'
+                node_sizes[node] = 600
+            elif node.startswith('stair'):
+                node_colors[node] = 'yellow'
+                node_sizes[node] = 500
+            elif node.startswith('lift'):
+                node_colors[node] = 'purple'
+                node_sizes[node] = 500
+            elif 'bathroom' in node:
+                node_colors[node] = 'pink' if node.startswith('f_') else 'lightcyan'
+                node_sizes[node] = 450
+            elif node.startswith('watercooler'):
+                node_colors[node] = 'lightgreen'
+                node_sizes[node] = 350
+            elif node.startswith('staff'):
+                node_colors[node] = 'gold'
+                node_sizes[node] = 550
+            else:
+                node_colors[node] = 'gray'
+                node_sizes[node] = 300
+
+        # Draw all edges (corridors)
+        nx.draw_networkx_edges(self.graph, pos, edge_color='lightgray', width=2, ax=ax)
+
+        # Draw all nodes with their specific colors
+        for node in self.graph.nodes():
+            nx.draw_networkx_nodes(self.graph, pos, nodelist=[node],
+                                   node_color=node_colors[node],
+                                   node_size=node_sizes[node], ax=ax)
+
+        # Draw labels with smaller font for clarity
+        nx.draw_networkx_labels(self.graph, pos, font_size=6, ax=ax)
+
+        # Highlight the path if provided
+        if path and len(path) > 1:
+            path_edges = [(path[i], path[i + 1]) for i in range(len(path) - 1)]
+            nx.draw_networkx_edges(self.graph, pos, edgelist=path_edges,
+                                   edge_color='red', width=6, ax=ax)
+
+            # Highlight start and end nodes
+            if path[0] in pos:
+                nx.draw_networkx_nodes(self.graph, pos, nodelist=[path[0]],
+                                       node_color='lime', node_size=800, ax=ax)
+            if path[-1] in pos:
+                nx.draw_networkx_nodes(self.graph, pos, nodelist=[path[-1]],
+                                       node_color='red', node_size=800, ax=ax)
+
+        # Add floor separators
+        y_separators = [7.5, 22.5]  # Between floors
+        for y in y_separators:
+            ax.axhline(y=y, color='black', linestyle='--', linewidth=2, alpha=0.5)
+
+        # Add floor labels
+        ax.text(-5, 0, 'FLOOR 1', fontsize=20, fontweight='bold', rotation=90, va='center')
+        ax.text(-5, 15, 'FLOOR 2', fontsize=20, fontweight='bold', rotation=90, va='center')
+        ax.text(-5, 30, 'FLOOR 3', fontsize=20, fontweight='bold', rotation=90, va='center')
+
+        # Create legend
+        legend_elements = [
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='lightblue', markersize=10, label='Rooms'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='green', markersize=12, label='Entrance'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='orange', markersize=12, label='Exit'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='yellow', markersize=11, label='Stairs'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='purple', markersize=11, label='Lift'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='pink', markersize=10, label='Female Bathroom'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='lightcyan', markersize=10,
+                       label='Male Bathroom'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='lightgreen', markersize=9,
+                       label='Water Cooler'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='gold', markersize=12, label='Staff Area'),
+            plt.Line2D([0], [0], color='red', linewidth=6, label='Navigation Route')
+        ]
+        ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1.15, 1))
+
+        # Set title
+        title = '3-Floor Building Navigation Map'
+        if path and destination:
+            title += f'\nRoute: {start_location} → {destination}'
+        ax.set_title(title, fontsize=24, fontweight='bold', pad=20)
+
+        ax.set_aspect('equal')
+        ax.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.show()
+
+        return fig
+
+
+def main():
+    navigator = MultiSourceThreeFloorNavigator()
+    print("Welcome to the 3-Floor Building Navigator!")
+    print("Available rooms:", navigator.rooms[:10], "... and more")  # Show first 10 for brevity
+    current_location = 'entrance1'
+
+    while True:
+        destination = input(f"\nFrom '{current_location}', enter destination room (or type 'exit' to finish): ").strip()
+        if destination.lower() == 'exit':
+            print("Thank you for using the building navigator. Goodbye!")
+            break
+        if destination not in navigator.rooms:
+            print(f"Room '{destination}' does not exist. Please enter a valid room name.")
+            continue
+
+        # Find route and create comprehensive map
+        path, distance = navigator.find_route(current_location, destination)
+        if path:
+            print(f"\n=== NAVIGATION RESULT ===")
+            print(f"Route from {current_location} to {destination}:")
+            print(f"Path: {' → '.join(path)}")
+            print(f"Total distance: {distance} meters")
+
+            # For room destinations, also show nearest source suggestion
+            if destination.startswith('room'):
+                best = navigator.suggest_nearest_source(destination)
+                if best:
+                    source, dist, best_path = best
+                    print(f"\nNearest source to {destination}: {source} (distance: {dist} meters)")
+                    print(f"Best route: {' → '.join(best_path)}")
+
+            # Create and display the comprehensive building map
+            print("\nGenerating building map with navigation route...")
+            navigator.create_building_map_with_route(path, current_location, destination)
+            current_location = destination
+        else:
+            print(f"No path found from {current_location} to {destination}. Please try another room.")
+
+
+if __name__ == "__main__":
+    main()
