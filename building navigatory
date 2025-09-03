@@ -1,0 +1,106 @@
+
+# Working Code Example
+import networkx as nx
+import matplotlib.pyplot as plt
+
+
+class BuildingNavigator:
+    def __init__(self):
+        self.graph = nx.Graph()
+        self.setup_building_layout()
+
+    def setup_building_layout(self):
+        """Create building layout as a graph"""
+        # Add nodes (rooms and corridors)
+        rooms = {
+            'entrance': (0, 0),
+            'corridor1': (5, 0),
+            'corridor2': (10, 0),
+            'room101': (10, -5),
+            'room102': (10, 5),
+            'stairs': (15, 0),
+            'corridor3': (20, 0),
+            'room201': (20, -5),
+            'room202': (20, 5)
+        }
+
+        # Add nodes with positions
+        for room, pos in rooms.items():
+            self.graph.add_node(room, pos=pos)
+
+        # Add edges (connections between rooms)
+        connections = [
+            ('entrance', 'corridor1', 5),
+            ('corridor1', 'corridor2', 5),
+            ('corridor2', 'room101', 5),
+            ('corridor2', 'room102', 5),
+            ('corridor2', 'stairs', 5),
+            ('stairs', 'corridor3', 5),
+            ('corridor3', 'room201', 5),
+            ('corridor3', 'room202', 5)
+        ]
+
+        for start, end, weight in connections:
+            self.graph.add_edge(start, end, weight=weight)
+
+    def find_route(self, start, destination):
+        """Find shortest route between two points"""
+        try:
+            path = nx.shortest_path(self.graph, start, destination, weight='weight')
+            distance = nx.shortest_path_length(self.graph, start, destination, weight='weight')
+            return path, distance
+        except nx.NetworkXNoPath:
+            return None, None
+
+    def visualize_route(self, path=None):
+        """Visualize building layout and route"""
+        pos = nx.get_node_attributes(self.graph, 'pos')
+
+        plt.figure(figsize=(12, 8))
+
+        # Draw all edges
+        nx.draw_networkx_edges(self.graph, pos, edge_color='lightgray', width=2)
+
+        # Draw all nodes
+        nx.draw_networkx_nodes(self.graph, pos, node_color='lightblue',
+                               node_size=800, alpha=0.7)
+
+        # Draw labels
+        nx.draw_networkx_labels(self.graph, pos, font_size=8)
+
+        # Highlight the path if provided
+        if path and len(path) > 1:
+            path_edges = [(path[i], path[i + 1]) for i in range(len(path) - 1)]
+            nx.draw_networkx_edges(self.graph, pos, edgelist=path_edges,
+                                   edge_color='red', width=3)
+
+            # Highlight start and end nodes
+            nx.draw_networkx_nodes(self.graph, pos, nodelist=[path],
+                                   node_color='green', node_size=1000)
+            nx.draw_networkx_nodes(self.graph, pos, nodelist=[path[-1]],
+                                   node_color='red', node_size=1000)
+
+        plt.title("College Building Indoor Navigation")
+        plt.axis('equal')
+        plt.grid(True, alpha=0.3)
+        plt.show()
+
+
+# Example usage
+navigator = BuildingNavigator()
+
+# Find route from entrance to room 201
+start = 'entrance'
+destination = 'room201'
+
+path, distance = navigator.find_route(start, destination)
+
+if path:
+    print(f"Route from {start} to {destination}:")
+    print(f"Path: {' → '.join(path)}")
+    print(f"Total distance: {distance} meters")
+
+    # Visualize the route
+    navigator.visualize_route(path)
+else:
+    print(f"No route found from {start} to {destination}")
