@@ -9,6 +9,84 @@ import 'package:page_transition/page_transition.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
 import 'package:marquee/marquee.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:permission_handler/permission_handler.dart';
+
+Future<bool> _checkAndRequestAllPermissions(BuildContext context) async {
+  Map<Permission, PermissionStatus> statuses = await [
+    Permission.location,
+    Permission.camera,
+    Permission.microphone,
+    Permission.storage,
+    Permission.bluetooth,
+    Permission.bluetoothConnect,
+    Permission.bluetoothScan,
+    // Permission.accessMediaLocation,
+    // Permission.scheduleExactAlarm,
+    // Permission.notification, // For foreground services on Android 13+
+    // Permission.manageExternalStorage,
+    Permission.activityRecognition,
+  ].request();
+
+  // You can check the status for each permission, for example:
+  bool allGranted = statuses.values.every((status) => status.isGranted);
+
+  if (allGranted) {
+    return true;
+  } else {
+    await _showOpenSettingsDialog(context);
+    return false;
+  }
+}
+
+  if (status.isDenied) {
+    // Request permission
+    status = await Permission.location.request();
+    if (status.isGranted) {
+      return true; // Permission granted after request
+    } else if (status.isPermanentlyDenied) {
+      // Show dialog to ask user to open app settings
+      await _showOpenSettingsDialog(context);
+      return false;
+    }
+    return false; // Permission denied
+  }
+
+  if (status.isPermanentlyDenied) {
+    // Already permanently denied, show dialog
+    await _showOpenSettingsDialog(context);
+    return false;
+  }
+
+  return false;
+}
+
+Future<void> _showOpenSettingsDialog(BuildContext context) async {
+  await showDialog(
+    context: context,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        title: Text('Permission Required'),
+        content: Text(
+            'Location permission is required for navigation. Please enable it in app settings.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              await openAppSettings();
+              Navigator.of(context).pop();
+            },
+            child: Text('Open Settings'),
+          ),
+        ],
+      );
+    },
+  );
+}
 
 void main() {
   runApp(const MyApp());
@@ -35,7 +113,7 @@ class _MyAppState extends State<MyApp> {
     try {
       await _audioPlayer.play(AssetSource('splash_sound.mp3'));
     } catch (e) {
-      print('Error playing sound: $e');
+      //print('Error playing sound: $e');
     }
   }
 
