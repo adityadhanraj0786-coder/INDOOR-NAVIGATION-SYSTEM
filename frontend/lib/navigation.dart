@@ -19,6 +19,7 @@ class _NavigationState extends State<Navigation> {
   Timer? _timer;   // ⬅️ NEW: Timer for auto-update
   bool _autoStarted = false;
 
+
   @override
   void dispose() {
     _timer?.cancel();  // ⬅️ STOP TIMER WHEN SCREEN CLOSES
