@@ -254,10 +254,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
         title: SizedBox(
+
           height: kToolbarHeight,
+          
           child: Marquee(
             text:
-                "•NOTE: FOT will remain closed tomorrow•\t\t\t\t•Tip: Try not to trip on your way to stairs•\t\t\t\t•Hello Ma'am!•\t\t\t\t•Yayyy :D•\t\t\t\t ",
+                "•NOTE: FOT will remain closed tomorrow•\t\t\t\t•Gate 2 will be closed due to rain blockage•\t\t\t\t•Good luck for the SEC presentation!•\t\t\t\t•Stay tuned for updates!•\t\t\t\t ",
             style: const TextStyle(fontSize: 20, color: Colors.white),
             blankSpace: 10.0,
             velocity: 50.0,
