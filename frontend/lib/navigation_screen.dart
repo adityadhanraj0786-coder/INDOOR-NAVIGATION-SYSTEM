@@ -1,38 +1,57 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'route_api.dart';
+import 'package:permission_handler/permission_handler.dart';
 
-class Navigation extends StatefulWidget {
-  const Navigation({super.key});
+import '../services/route_api.dart';
+
+class NavigationScreen extends StatefulWidget {
+  const NavigationScreen({super.key});
 
   @override
-  State<Navigation> createState() => _NavigationState();
+  State<NavigationScreen> createState() => _NavigationScreenState();
 }
 
-class _NavigationState extends State<Navigation> {
+class _NavigationScreenState extends State<NavigationScreen> {
   final TextEditingController _targetController = TextEditingController();
   RouteResult? _routeResult;
   String? _error;
   bool _isLoading = false;
 
-  Timer? _timer;   // ⬅️ NEW: Timer for auto-update
-  bool _autoStarted = false;
-
   @override
   void dispose() {
-    _timer?.cancel();  // ⬅️ STOP TIMER WHEN SCREEN CLOSES
     _targetController.dispose();
     super.dispose();
   }
 
   Future<Position> _getCurrentPosition() async {
+    // 1. Check location service
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      throw Exception('Location services are disabled.');
+    }
+
+    // 2. Check permission
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        throw Exception('Location permissions are denied.');
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      throw Exception(
+        'Location permissions are permanently denied, please enable them in settings.',
+      );
+    }
+
+    // 3. Get current position
     return Geolocator.getCurrentPosition(
       desiredAccuracy: LocationAccuracy.high,
     );
   }
 
-  Future<void> _getRoute({bool auto = false}) async {
+  Future<void> _getRoute() async {
     final targetName = _targetController.text.trim();
     if (targetName.isEmpty) {
       setState(() {
@@ -41,19 +60,18 @@ class _NavigationState extends State<Navigation> {
       return;
     }
 
-    // ⬅️ Only show loading spinner on manual button press
-    if (!auto) {
-      setState(() {
-        _isLoading = true;
-        _error = null;
-      });
-    }
+    setState(() {
+      _isLoading = true;
+      _error = null;
+      _routeResult = null;
+    });
 
     try {
-      final position = await _getCurrentPosition();
-
+      // Example: user floor and target floor – you can change these or make dropdowns
       const int userFloor = 0;
       const int targetFloor = 2;
+
+      final position = await _getCurrentPosition();
 
       final result = await RouteApi.fetchRoute(
         userLat: position.latitude,
@@ -66,34 +84,15 @@ class _NavigationState extends State<Navigation> {
       setState(() {
         _routeResult = result;
       });
-
-      // ⬅️ Start refreshing every 5 secs AFTER first successful route
-      if (!_autoStarted) {
-        _startAutoUpdate();
-      }
-
     } catch (e) {
-      if (!auto) {
-        setState(() {
-          _error = e.toString();
-        });
-      }
+      setState(() {
+        _error = e.toString();
+      });
     } finally {
-      if (!auto) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      setState(() {
+        _isLoading = false;
+      });
     }
-  }
-
-  void _startAutoUpdate() {
-    _autoStarted = true;
-
-    _timer = Timer.periodic(
-      const Duration(seconds: 5),
-      (_) => _getRoute(auto: true),   // ⬅️ auto refresh
-    );
   }
 
   Widget _buildRouteInfo() {
@@ -120,26 +119,20 @@ class _NavigationState extends State<Navigation> {
         Text('To: ${route.target}'),
         const SizedBox(height: 8),
         Text('Distance: ${route.distanceM.toStringAsFixed(1)} meters'),
-        const SizedBox(height: 16),
-
+        const SizedBox(height: 8),
         const Text(
           'Instructions:',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        const SizedBox(height: 4),
         ...route.instructions.map((s) => Text('• $s')),
-
-        const SizedBox(height: 16),
+        const SizedBox(height: 8),
         const Text(
           'Path nodes:',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        const SizedBox(height: 4),
-
         ...route.path.map(
           (node) => Text(
-            '${node.name} (floor ${node.floor})\n'
-            '[${node.lat.toStringAsFixed(6)}, ${node.lon.toStringAsFixed(6)}]',
+            '${node.name} (floor ${node.floor}) – [${node.lat.toStringAsFixed(6)}, ${node.lon.toStringAsFixed(6)}]',
             style: const TextStyle(fontSize: 12),
           ),
         ),
@@ -151,9 +144,7 @@ class _NavigationState extends State<Navigation> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Navigation'),
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
+        title: const Text('Indoor Navigation'),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -162,28 +153,21 @@ class _NavigationState extends State<Navigation> {
             TextField(
               controller: _targetController,
               decoration: const InputDecoration(
-                labelText: 'Destination room',
+                labelText: 'Destination room name',
                 hintText: 'e.g. Room 302',
                 border: OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 12),
-
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _isLoading ? null : () => _getRoute(auto: false),
+                onPressed: _isLoading ? null : _getRoute,
                 child: const Text('Get Route'),
               ),
             ),
-
             const SizedBox(height: 16),
-
-            Expanded(
-              child: SingleChildScrollView(
-                child: _buildRouteInfo(),
-              ),
-            ),
+            Expanded(child: SingleChildScrollView(child: _buildRouteInfo())),
           ],
         ),
       ),
