@@ -12,16 +12,17 @@
 # Requirements:
 #   pip install pyproj networkx fastapi uvicorn
 
-import csv
+
 import math
 import json
-import argparse
+
 from typing import Dict, Tuple, List, Optional
 
 import networkx as nx
 from pyproj import Transformer
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Query
+from db import supabase
 
 # ------------------------------
 # Config
@@ -58,25 +59,21 @@ def choose_utm_epsg(lat: float, lon: float) -> str:
 
 class IndoorRouter:
     def __init__(
-        self,
-        nodes_path: str,
-        edges_path: str,
-        source_crs: str = "EPSG:4326",       # WGS84 (lat, lon)
-        target_crs: Optional[str] = None,    # e.g., EPSG:32644 or EPSG:3857
-        anchor_lat: Optional[float] = None,
-        anchor_lon: Optional[float] = None,
-    ):
-        self.nodes_path = nodes_path
-        self.edges_path = edges_path
+    self,
+    source_crs: str = "EPSG:4326",
+    target_crs: Optional[str] = None,
+):
+        
         self.source_crs = source_crs
         self.nodes: Dict[str, dict] = {}
         self.G = nx.Graph()
         self.target_crs = target_crs
-        self.anchor_lat = anchor_lat
-        self.anchor_lon = anchor_lon
+        
 
-        raw_nodes = self._load_nodes_csv(nodes_path)
-        raw_edges = self._load_edges_csv(edges_path)
+     
+
+        raw_nodes = self._load_nodes_db()
+        raw_edges = self._load_edges_db()
 
         if not self.target_crs:
             lat0, lon0 = self._pick_anchor(raw_nodes)
@@ -89,28 +86,22 @@ class IndoorRouter:
         self._build_nodes(raw_nodes)
         self._build_edges(raw_edges)
 
-    def _pick_anchor(self, raw_nodes: List[dict]) -> Tuple[float, float]:
-        if self.anchor_lat is not None and self.anchor_lon is not None:
-            return self.anchor_lat, self.anchor_lon
+
+    def _pick_anchor(self, raw_nodes):
         lats = [float(r["lat"]) for r in raw_nodes]
         lons = [float(r["lon"]) for r in raw_nodes]
         return (sum(lats) / len(lats), sum(lons) / len(lons))
 
-    def _load_nodes_csv(self, path: str) -> List[dict]:
-        rows = []
-        with open(path, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for r in reader:
-                rows.append(r)
-        return rows
+    
 
-    def _load_edges_csv(self, path: str) -> List[dict]:
-        rows = []
-        with open(path, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for r in reader:
-                rows.append(r)
-        return rows
+    
+    def _load_nodes_db(self):
+        response = supabase.table("nodes").select("*").execute()
+        return response.data
+
+    def _load_edges_db(self):
+        response = supabase.table("edges").select("*").execute()
+        return response.data 
 
     def _build_nodes(self, raw_nodes: List[dict]):
         lons = [float(r["lon"]) for r in raw_nodes]
@@ -254,11 +245,9 @@ async def lifespan(app: FastAPI):
     source_crs = os.getenv("INDOOR_SOURCE_CRS", "EPSG:4326")
     target_crs = os.getenv("INDOOR_TARGET_CRS")  # optional
     app.state.router = IndoorRouter(
-        nodes_path,
-        edges_path,
-        source_crs=source_crs,
-        target_crs=target_crs,
-    )
+    source_crs=source_crs,
+    target_crs=target_crs,
+)
     yield
     app.state.router = None
 
@@ -287,42 +276,7 @@ def route(
         return {"error": str(e)}
 
 
-# ------------------------------
-# CLI entrypoint
-# ------------------------------
 
-def main():
-    ap = argparse.ArgumentParser(description="Indoor routing (3+ floors) with floor-aware penalties.")
-    ap.add_argument("--nodes", required=True, help="nodes.csv")
-    ap.add_argument("--edges", required=True, help="edges.csv")
-    ap.add_argument("--user-lat", type=float, required=True, help=28.61301)
-    ap.add_argument("--user-lon", type=float, required=True, help=77.20905)
-    ap.add_argument("--target-name", type=str, required=True, help="Target room/place name")
-    ap.add_argument("--user-floor", type=int, default=None, help=0)
-    ap.add_argument("--target-floor", type=int, default=None, help=3)
-    ap.add_argument("--source-crs", type=str, default="EPSG:4326", help="Source CRS (default WGS84)")
-    ap.add_argument("--target-crs", type=str, default=None, help="Target projected CRS (auto if omitted)")
-    args = ap.parse_args()
-
-    router = IndoorRouter(
-        nodes_path=args.nodes,
-        edges_path=args.edges,
-        source_crs=args.source_crs,
-        target_crs=args.target_crs,
-    )
-
-    res = router.route(
-        user_lon=args.user_lon,
-        user_lat=args.user_lat,
-        target_name=args.target_name,
-        user_floor=args.user_floor,
-        target_floor=args.target_floor,
-    )
-    print(json.dumps(res, indent=2, ensure_ascii=False))
-
-
-if __name__ == "__main__":
-    main()
 
 
 

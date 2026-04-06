@@ -4,8 +4,6 @@ import matplotlib.pyplot as plt
 
 # Initialize the router (only once)
 router = IndoorRouter(
-    nodes_path="nodes.csv",
-    edges_path="edges.csv",
     source_crs="EPSG:4326"
 )
 
