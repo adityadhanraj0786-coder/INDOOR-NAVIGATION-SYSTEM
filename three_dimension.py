@@ -69,9 +69,6 @@ class IndoorRouter:
         self.G = nx.Graph()
         self.target_crs = target_crs
         
-
-     
-
         raw_nodes = self._load_nodes_db()
         raw_edges = self._load_edges_db()
 
