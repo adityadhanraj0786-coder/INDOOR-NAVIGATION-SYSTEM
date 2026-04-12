@@ -332,6 +332,8 @@ class _NavigationState extends State<Navigation> {
                     const SizedBox(height: 16),
                     TextField(
                       controller: _targetController,
+                      textInputAction: TextInputAction.search,
+                      onSubmitted: (_) => _fetchRoute(auto: false),
                       decoration: InputDecoration(
                         labelText: 'Destination room',
                         hintText: 'Example: Room 302',
@@ -343,6 +345,21 @@ class _NavigationState extends State<Navigation> {
                           icon: const Icon(Icons.clear),
                         ),
                       ),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final destination
+                            in AppConfig.floorThreeDestinations)
+                          ActionChip(
+                            label: Text(destination),
+                            onPressed: () {
+                              _targetController.text = destination;
+                            },
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 16),
                     Row(

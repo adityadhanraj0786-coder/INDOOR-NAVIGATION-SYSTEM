@@ -1,0 +1,5 @@
+fastapi
+networkx
+pyproj
+supabase
+uvicorn

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -47,19 +48,36 @@ class RouteResult {
   final List<String> instructions;
 
   factory RouteResult.fromJson(Map<String, dynamic> json) {
+    final path = (json['path'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(RouteNode.fromJson)
+        .toList();
+
     return RouteResult(
-      start: json['start_name']?.toString() ?? json['start']?.toString() ?? '',
+      start:
+          json['start_name']?.toString() ??
+          _resolveEndpointName(json['start'], path, isStart: true),
       target:
-          json['target_name']?.toString() ?? json['target']?.toString() ?? '',
+          json['target_name']?.toString() ??
+          _resolveEndpointName(json['target'], path, isStart: false),
       distanceM: (json['distance_m'] as num? ?? 0).toDouble(),
-      path: (json['path'] as List<dynamic>? ?? const [])
-          .whereType<Map<String, dynamic>>()
-          .map(RouteNode.fromJson)
-          .toList(),
+      path: path,
       instructions: (json['instructions'] as List<dynamic>? ?? const [])
           .map((item) => item.toString())
           .toList(),
     );
+  }
+
+  static String _resolveEndpointName(
+    Object? rawValue,
+    List<RouteNode> path, {
+    required bool isStart,
+  }) {
+    if (path.isNotEmpty) {
+      return isStart ? path.first.name : path.last.name;
+    }
+
+    return rawValue?.toString() ?? '';
   }
 }
 
@@ -75,23 +93,112 @@ class RouteApi {
     required String targetName,
     int? targetFloor,
   }) async {
-    final queryParams = <String, String>{
+    final effectiveTargetFloor = targetFloor ?? userFloor;
+    final targetCandidates = _buildTargetCandidates(targetName);
+    Object? lastPayload;
+    int? lastStatusCode;
+
+    for (final candidate in targetCandidates) {
+      try {
+        final response = await _postRoute(
+          userLat: userLat,
+          userLon: userLon,
+          userFloor: userFloor,
+          targetName: candidate,
+          targetFloor: effectiveTargetFloor,
+        );
+
+        return _handleRouteResponse(response);
+      } on _ApiFailure catch (failure) {
+        lastPayload = failure.payload;
+        lastStatusCode = failure.statusCode;
+        if (!_isRetryableTargetError(failure.message)) {
+          throw Exception(failure.message);
+        }
+      } on SocketException {
+        throw Exception(
+          'Unable to reach the route server at http://$backendHost. Make sure the backend is running and your phone is on the same Wi-Fi network.',
+        );
+      } on TimeoutException {
+        throw Exception(
+          'The route server at http://$backendHost took too long to respond.',
+        );
+      }
+    }
+
+    try {
+      final response = await _getRoute(
+        userLat: userLat,
+        userLon: userLon,
+        userFloor: userFloor,
+        targetName: targetCandidates.first,
+        targetFloor: effectiveTargetFloor,
+      );
+      return _handleRouteResponse(response);
+    } on _ApiFailure catch (failure) {
+      lastPayload = failure.payload;
+      lastStatusCode = failure.statusCode;
+    }
+
+    final fallbackMessage = 'Route request failed (status $lastStatusCode).';
+    throw Exception(_extractMessage(lastPayload) ?? fallbackMessage);
+  }
+
+  static Future<http.Response> _postRoute({
+    required double userLat,
+    required double userLon,
+    required int userFloor,
+    required String targetName,
+    required int targetFloor,
+  }) {
+    final uri = Uri.http(backendHost, '/route');
+    return http
+        .post(
+          uri,
+          headers: const {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'user_lat': userLat,
+            'user_lon': userLon,
+            'user_floor': userFloor,
+            'target_name': targetName,
+            'target_floor': targetFloor,
+          }),
+        )
+        .timeout(AppConfig.requestTimeout);
+  }
+
+  static Future<http.Response> _getRoute({
+    required double userLat,
+    required double userLon,
+    required int userFloor,
+    required String targetName,
+    required int targetFloor,
+  }) {
+    final uri = Uri.http(backendHost, '/route', {
       'user_lat': userLat.toString(),
       'user_lon': userLon.toString(),
       'user_floor': userFloor.toString(),
       'target_name': targetName,
-      if (targetFloor != null) 'target_floor': targetFloor.toString(),
-    };
+      'target_floor': targetFloor.toString(),
+    });
 
-    final uri = Uri.http(backendHost, '/route', queryParams);
-    final response = await http
+    return http
         .get(uri, headers: const {'Accept': 'application/json'})
         .timeout(AppConfig.requestTimeout);
+  }
 
+  static RouteResult _handleRouteResponse(http.Response response) {
     final payload = _decodeJson(response.body);
 
     if (response.statusCode != 200) {
-      throw Exception(_extractMessage(payload) ?? 'Request failed.');
+      throw _ApiFailure(
+        statusCode: response.statusCode,
+        payload: payload,
+        message: _extractMessage(payload) ?? 'Request failed.',
+      );
     }
 
     if (payload is! Map<String, dynamic>) {
@@ -103,6 +210,40 @@ class RouteApi {
     }
 
     return RouteResult.fromJson(payload);
+  }
+
+  static List<String> _buildTargetCandidates(String input) {
+    final trimmed = input.trim();
+    final variants = <String>{
+      trimmed,
+      _insertSpacesBetweenLettersAndDigits(trimmed),
+      _normalizeWhitespace(trimmed),
+      _normalizeWhitespace(_insertSpacesBetweenLettersAndDigits(trimmed)),
+    };
+
+    return variants.where((value) => value.isNotEmpty).toList();
+  }
+
+  static String _insertSpacesBetweenLettersAndDigits(String value) {
+    return value
+        .replaceAllMapped(
+          RegExp(r'([A-Za-z])(\d)'),
+          (match) => '${match.group(1)} ${match.group(2)}',
+        )
+        .replaceAllMapped(
+          RegExp(r'(\d)([A-Za-z])'),
+          (match) => '${match.group(1)} ${match.group(2)}',
+        );
+  }
+
+  static String _normalizeWhitespace(String value) {
+    return value.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  static bool _isRetryableTargetError(String message) {
+    final normalized = message.toLowerCase();
+    return normalized.contains('target not found') ||
+        normalized.contains('not found on floor');
   }
 
   static Object? _decodeJson(String body) {
@@ -131,4 +272,16 @@ class RouteApi {
 
     return null;
   }
+}
+
+class _ApiFailure implements Exception {
+  _ApiFailure({
+    required this.statusCode,
+    required this.payload,
+    required this.message,
+  });
+
+  final int statusCode;
+  final Object? payload;
+  final String message;
 }
