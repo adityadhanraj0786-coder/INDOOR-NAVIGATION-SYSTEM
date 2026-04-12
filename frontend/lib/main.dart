@@ -1,128 +1,152 @@
-// ignore_for_file: use_build_context_synchronously
+import 'dart:async';
 
-import 'dart:io';
-import 'maps.dart';
-import 'profile.dart';
-import 'navigation.dart';
 import 'package:flutter/material.dart';
-import 'package:animated_splash_screen/animated_splash_screen.dart';
-import 'package:page_transition/page_transition.dart';
-import 'package:animated_text_kit/animated_text_kit.dart';
-import 'package:marquee/marquee.dart';
-import 'package:audioplayers/audioplayers.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:geolocator/geolocator.dart';
+
+import 'app_config.dart';
+import 'maps.dart';
+import 'navigation.dart';
+import 'profile.dart';
 
 void main() {
   runApp(const MyApp());
 }
 
-class MyApp extends StatefulWidget {
+class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
-  State<MyApp> createState() => _MyAppState();
+  Widget build(BuildContext context) {
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF0E5C5A),
+      brightness: Brightness.light,
+    );
+
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: AppConfig.appName,
+      theme: ThemeData(
+        colorScheme: colorScheme,
+        useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFF7F4EC),
+        appBarTheme: AppBarTheme(
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
+          centerTitle: true,
+        ),
+        cardTheme: CardThemeData(
+          color: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+        ),
+      ),
+      home: const SplashGate(),
+    );
+  }
 }
 
-class _MyAppState extends State<MyApp> {
-  late AudioPlayer _audioPlayer;
+class SplashGate extends StatefulWidget {
+  const SplashGate({super.key});
+
+  @override
+  State<SplashGate> createState() => _SplashGateState();
+}
+
+class _SplashGateState extends State<SplashGate> {
+  Timer? _timer;
+  bool _showHome = false;
 
   @override
   void initState() {
     super.initState();
-    _audioPlayer = AudioPlayer();
-    _playSound();
-  }
-
-  Future<void> _playSound() async {
-    try {
-      await _audioPlayer.play(AssetSource('splash_sound.mp3'));
-    } catch (e) {
-      // ignore error
-    }
+    _timer = Timer(const Duration(milliseconds: 2400), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _showHome = true;
+      });
+    });
   }
 
   @override
   void dispose() {
-    _audioPlayer.dispose();
+    _timer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: AnimatedSplashScreen(
-        splash: Center(
-          child: Column(
-            children: [
-              SizedBox(
-                width: 250,
-                height: 150,
-                child: Image.asset('assets/logo.png'),
-              ),
-              const SizedBox(height: 20),
-              AnimatedTextKit(
-                repeatForever: true,
-                animatedTexts: [
-                  ColorizeAnimatedText(
-                    'NavU',
-                    textAlign: TextAlign.center,
-                    textStyle: const TextStyle(
-                      fontSize: 32.0,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue,
-                    ),
-                    colors: [
-                      const Color.fromARGB(255, 225, 255, 0),
-                      Colors.green,
-                      Colors.purple,
-                      Colors.orange,
-                      Colors.red,
-                      Colors.yellow,
-                      Colors.pink,
-                      Colors.cyan,
-                      const Color.fromARGB(255, 0, 157, 255),
-                    ],
-                    speed: Duration(milliseconds: 8000),
-                  ),
-                ],
-                pause: Duration.zero,
-              ),
-              const SizedBox(height: 8),
-              AnimatedTextKit(
-                repeatForever: true,
-                animatedTexts: [
-                  ColorizeAnimatedText(
-                    'Your Pocket Guide',
-                    textStyle: const TextStyle(
-                      fontSize: 20.0,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    colors: [
-                      const Color.fromARGB(255, 209, 249, 8),
-                      Colors.green,
-                      Colors.purple,
-                      Colors.orange,
-                      Colors.red,
-                      Colors.yellow,
-                      Colors.pink,
-                      Colors.cyan,
-                      const Color.fromARGB(255, 0, 157, 255),
-                    ],
-                    speed: const Duration(milliseconds: 2000),
-                  ),
-                ],
-                pause: Duration.zero,
-              ),
-            ],
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 450),
+      child: _showHome ? const HomeScreen() : const SplashScreen(),
+    );
+  }
+}
+
+class SplashScreen extends StatelessWidget {
+  const SplashScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF061A1B), Color(0xFF0E5C5A), Color(0xFFE7B84A)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
         ),
-        splashIconSize: 262,
-        nextScreen: const HomeScreen(),
-        splashTransition: SplashTransition.fadeTransition,
-        pageTransitionType: PageTransitionType.fade,
-        duration: 2900,
-        backgroundColor: const Color.fromARGB(255, 0, 0, 0),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(28),
+                  child: Image.asset(
+                    'assets/logo.png',
+                    width: 180,
+                    height: 180,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  AppConfig.appName,
+                  style: theme.textTheme.displaySmall?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Your pocket guide for indoor campus navigation',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.92),
+                  ),
+                ),
+                const SizedBox(height: 28),
+                const SizedBox(
+                  width: 42,
+                  height: 42,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3.2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -135,84 +159,91 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
+class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _checkPermissionsOnResume();
+  Future<void> _openNavigation() async {
+    final ready = await _ensureLocationPermission();
+    if (!mounted || !ready) {
+      return;
     }
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const Navigation()),
+    );
   }
 
-  Future<void> _checkPermissionsOnResume() async {
-    var status = await Permission.location.status;
-    if (status.isGranted) {
-      print('Location permission granted on resume');
-    } else {
-      print('Location permission still denied on resume');
-    }
+  Future<void> _openMap() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const Maps()),
+    );
   }
 
-  Future<bool> _checkAndRequestAllPermissions(BuildContext context) async {
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.location,
-      Permission.camera,
-      Permission.microphone,
-      //Permission.storage,
-      Permission.bluetooth,
-      Permission.bluetoothConnect,
-      Permission.bluetoothScan,
-      //Permission.accessMediaLocation,
-      Permission.activityRecognition,
-      //Permission.scheduleExactAlarm,
-      //Permission.notification,
-      //Permission.manageExternalStorage,
-    ].request();
-
-    bool allGranted = statuses.values.every((status) => status.isGranted);
-
-    if (allGranted) {
-      return true;
-    } else {
-      await _showOpenSettingsDialog(context);
+  Future<bool> _ensureLocationPermission() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (!mounted) {
+        return false;
+      }
+      await _showMessage(
+        title: 'Turn on location',
+        message:
+            'Location services are currently disabled. Please enable them to start navigation.',
+      );
       return false;
     }
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      if (!mounted) {
+        return false;
+      }
+      await _showSettingsDialog();
+      return false;
+    }
+
+    if (permission == LocationPermission.denied) {
+      if (!mounted) {
+        return false;
+      }
+      await _showMessage(
+        title: 'Permission needed',
+        message: 'Location access is required to generate indoor routes.',
+      );
+      return false;
+    }
+
+    return true;
   }
 
-  Future<void> _showOpenSettingsDialog(BuildContext context) async {
-    await showDialog(
+  Future<void> _showSettingsDialog() async {
+    await showDialog<void>(
       context: context,
-      builder: (BuildContext context) {
+      builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Permissions Required'),
+          title: const Text('Location permission blocked'),
           content: const Text(
-              'Permissions are required for navigation. Please enable all app permissions in the settings.'),
+            'Please enable location permission from app settings to continue with navigation.',
+          ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+              onPressed: () => Navigator.of(dialogContext).pop(),
               child: const Text('Cancel'),
             ),
-            TextButton(
+            FilledButton(
               onPressed: () async {
-                await openAppSettings();
-                Navigator.of(context).pop();
+                await Geolocator.openAppSettings();
+                if (dialogContext.mounted) {
+                  Navigator.of(dialogContext).pop();
+                }
               },
-              child: const Text('Open Settings'),
+              child: const Text('Open settings'),
             ),
           ],
         );
@@ -220,144 +251,260 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-
-    if (index == 1) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => const ProfilePage()),
-      ).then((_) {
-        if (!mounted) return;
-        setState(() {
-          _selectedIndex = 0;
-        });
-      });
-    }
+  Future<void> _showMessage({
+    required String title,
+    required String message,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color.fromARGB(255, 245, 255, 215),
-      appBar: AppBar(
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () {
-              exit(0);
-            },
-          ),
-        ],
-        backgroundColor: Colors.black,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: SizedBox(
+    final pages = [
+      HomeDashboard(onOpenMap: _openMap, onOpenNavigation: _openNavigation),
+      const ProfilePage(),
+    ];
 
-          height: kToolbarHeight,
-          
-          child: Marquee(
-            text:
-                "•NOTE: FOT will remain closed tomorrow•\t\t\t\t•Gate 2 will be closed due to rain blockage•\t\t\t\t•Good luck for the SEC presentation!•\t\t\t\t•Stay tuned for updates!•\t\t\t\t ",
-            style: const TextStyle(fontSize: 20, color: Colors.white),
-            blankSpace: 10.0,
-            velocity: 50.0,
-            startAfter: Duration.zero,
-            pauseAfterRound: Duration.zero,
-            scrollAxis: Axis.horizontal,
-            crossAxisAlignment: CrossAxisAlignment.center,
+    final titles = ['Pocket Guide', 'Profile'];
+
+    return Scaffold(
+      appBar: AppBar(title: Text(titles[_selectedIndex])),
+      body: IndexedStack(index: _selectedIndex, children: pages),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: (index) {
+          setState(() {
+            _selectedIndex = index;
+          });
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Home',
           ),
-        ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Profile',
+          ),
+        ],
       ),
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
+    );
+  }
+}
+
+class HomeDashboard extends StatelessWidget {
+  const HomeDashboard({
+    super.key,
+    required this.onOpenMap,
+    required this.onOpenNavigation,
+  });
+
+  final Future<void> Function() onOpenMap;
+  final Future<void> Function() onOpenNavigation;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.all(16),
         children: [
-          const SizedBox(width: 200),
-          Image.asset(
-            'assets/finalmap.png',
-            width: 150,
-            height: 150,
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF0E5C5A), Color(0xFF153B68)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(28),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Pocket Guide',
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Preserving the original idea: one app for floor maps, live room lookup, and indoor route guidance.',
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _InfoChip(label: 'Server ${AppConfig.backendHost}'),
+                    const _InfoChip(label: 'Floor-aware routing'),
+                    const _InfoChip(label: 'Live location'),
+                  ],
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 1),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const Maps()),
-              );
-            },
-            child: const Text('Map'),
+          const SizedBox(height: 18),
+          _FeatureCard(
+            imagePath: 'assets/finalmap.png',
+            title: 'Map Explorer',
+            description:
+                'Open the building map, zoom in, rotate, and inspect the layout before you start moving.',
+            buttonLabel: 'Open map',
+            onPressed: onOpenMap,
           ),
-          const SizedBox(height: 50),
-          const SizedBox(width: 400),
-          Image.asset(
-            'assets/finalnav.png',
-            width: 150,
-            height: 150,
+          const SizedBox(height: 14),
+          _FeatureCard(
+            imagePath: 'assets/finalnav.png',
+            title: 'Live Navigation',
+            description:
+                'Use your current location plus destination room name to request a route from the backend.',
+            buttonLabel: 'Start navigation',
+            onPressed: onOpenNavigation,
           ),
-          const SizedBox(height: 1),
-          ElevatedButton(
-            onPressed: () async {
-              bool permissionGranted =
-                  await _checkAndRequestAllPermissions(context);
-              if (!mounted) return;
-              if (permissionGranted) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const Navigation()),
-                );
-              }
-            },
-            child: const Text('Navigation'),
-          ),
-        ],
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Profile'),
-        ],
-      ),
-      drawer: Drawer(
-        backgroundColor: const Color.fromARGB(255, 240, 220, 107),
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            Container(
-              height: 80,
-              color: const Color.fromARGB(255, 255, 57, 57),
-              alignment: Alignment.bottomCenter,
-              child: const Text(
-                'Menu  🍽️',
-                style: TextStyle(color: Colors.white, fontSize: 24),
+          const SizedBox(height: 18),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Announcements',
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  for (final item in AppConfig.announcements)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(top: 4),
+                            child: Icon(Icons.circle, size: 8),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              item,
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
               ),
             ),
-            ListTile(
-              leading: const Icon(Icons.home),
-              title: const Text('Home'),
-              onTap: () {
-                Navigator.pop(context);
-              },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FeatureCard extends StatelessWidget {
+  const _FeatureCard({
+    required this.imagePath,
+    required this.title,
+    required this.description,
+    required this.buttonLabel,
+    required this.onPressed,
+  });
+
+  final String imagePath;
+  final String title;
+  final String description;
+  final String buttonLabel;
+  final Future<void> Function() onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                width: 92,
+                height: 92,
+                color: const Color(0xFFF3EEE3),
+                child: Image.asset(imagePath, fit: BoxFit.cover),
+              ),
             ),
-            ListTile(
-              leading: const Icon(Icons.settings),
-              title: const Text('Settings'),
-              onTap: () {
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.contact_mail),
-              title: const Text('Contact Us'),
-              onTap: () {
-                Navigator.pop(context);
-              },
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(description),
+                  const SizedBox(height: 14),
+                  FilledButton(onPressed: onPressed, child: Text(buttonLabel)),
+                ],
+              ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );

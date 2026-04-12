@@ -5,20 +5,54 @@ class Maps extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        appBar: AppBar(title: Text('Maps')),
-        body: Center(
-          child: InteractiveViewer(
-            //quarterTurns: 1, // 1 = 90° rotation
-            panEnabled: true, // can drag
-            scaleEnabled: true, // can zoom
-            minScale: 0.5,
-            maxScale: 5.0,
-            child: RotatedBox(
-              quarterTurns: 1, // rotate 90° (landscape)
-              child: Image.asset('assets/map.jpg'),
-            ),
+    return Scaffold(
+      appBar: AppBar(title: const Text('Building Map')),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.touch_app_outlined),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Pinch to zoom, drag to pan, and rotate your phone if you prefer a landscape map view.',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: Container(
+                    color: const Color(0xFFECE5D6),
+                    child: InteractiveViewer(
+                      boundaryMargin: const EdgeInsets.all(80),
+                      minScale: 0.6,
+                      maxScale: 4.5,
+                      child: Center(
+                        child: RotatedBox(
+                          quarterTurns: 1,
+                          child: Image.asset(
+                            'assets/map.jpg',
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
