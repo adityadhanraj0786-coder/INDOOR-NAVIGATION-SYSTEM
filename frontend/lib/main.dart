@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -55,26 +56,61 @@ class SplashGate extends StatefulWidget {
 }
 
 class _SplashGateState extends State<SplashGate> {
+  late final AudioPlayer _audioPlayer;
   Timer? _timer;
   bool _showHome = false;
+  bool _audioStarted = false;
 
   @override
   void initState() {
     super.initState();
+    _audioPlayer = AudioPlayer();
+    unawaited(_playSplashAudio());
     _timer = Timer(const Duration(milliseconds: 2400), () {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _showHome = true;
-      });
+      unawaited(_finishSplash());
     });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    unawaited(_stopSplashAudio());
+    unawaited(_audioPlayer.dispose());
     super.dispose();
+  }
+
+  Future<void> _playSplashAudio() async {
+    try {
+      await _audioPlayer.setReleaseMode(ReleaseMode.stop);
+      await _audioPlayer.play(AssetSource('splash_sound.mp3'));
+      _audioStarted = true;
+    } catch (_) {
+      _audioStarted = false;
+    }
+  }
+
+  Future<void> _stopSplashAudio() async {
+    if (!_audioStarted) {
+      return;
+    }
+
+    try {
+      await _audioPlayer.stop();
+    } catch (_) {
+      // Ignore audio platform errors so the splash flow still completes.
+    } finally {
+      _audioStarted = false;
+    }
+  }
+
+  Future<void> _finishSplash() async {
+    await _stopSplashAudio();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _showHome = true;
+    });
   }
 
   @override
