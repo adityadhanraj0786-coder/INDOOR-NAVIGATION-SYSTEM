@@ -14,14 +14,17 @@
 
 
 import math
-import json
+import os
+import re
 
 from typing import Dict, Tuple, List, Optional
 
 import networkx as nx
 from pyproj import Transformer
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from db import supabase
 
 # ------------------------------
@@ -35,6 +38,10 @@ FLOOR_CHANGE_PENALTY_BY_TYPE = {
     "escalator": 15.0,  # if used
 }
 DEFAULT_EDGE_TYPE = "corridor"  # default for non-specified types
+
+
+def normalize_name(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.strip().lower())
 
 
 # ------------------------------
@@ -71,6 +78,11 @@ class IndoorRouter:
         
         raw_nodes = self._load_nodes_db()
         raw_edges = self._load_edges_db()
+
+        if not raw_nodes:
+            raise ValueError("No nodes were loaded from the database.")
+        if not raw_edges:
+            raise ValueError("No edges were loaded from the database.")
 
         if not self.target_crs:
             lat0, lon0 = self._pick_anchor(raw_nodes)
@@ -157,18 +169,36 @@ class IndoorRouter:
 
     def _find_target_node(self, target_name: str, target_floor: Optional[int] = None) -> Optional[str]:
         target_name_l = target_name.strip().lower()
+        normalized_target = normalize_name(target_name)
         candidates = []
         for nid, data in self.G.nodes(data=True):
-            if data["name"].strip().lower() == target_name_l:
+            normalized_name = normalize_name(data["name"])
+            if data["name"].strip().lower() == target_name_l or normalized_name == normalized_target:
                 if target_floor is None or data["floor"] == target_floor:
                     candidates.append(nid)
         if candidates:
             return candidates[0]
         for nid, data in self.G.nodes(data=True):
-            if target_name_l in data["name"].strip().lower():
+            normalized_name = normalize_name(data["name"])
+            if target_name_l in data["name"].strip().lower() or normalized_target in normalized_name:
                 if target_floor is None or data["floor"] == target_floor:
                     return nid
         return None
+
+    def available_floors(self) -> List[int]:
+        return sorted({int(data["floor"]) for _, data in self.G.nodes(data=True)})
+
+    def destinations_by_floor(self) -> Dict[int, List[str]]:
+        grouped: Dict[int, set[str]] = {}
+        for _, data in self.G.nodes(data=True):
+            name = str(data["name"])
+            if name.strip().lower().startswith("corridor"):
+                continue
+            grouped.setdefault(int(data["floor"]), set()).add(name)
+        return {
+            floor: sorted(names)
+            for floor, names in sorted(grouped.items())
+        }
 
     def project_wgs84_to_xy(self, lon: float, lat: float) -> Tuple[float, float]:
         x, y = self.fwd.transform(lon, lat)
@@ -206,7 +236,9 @@ class IndoorRouter:
 
         return {
             "start": start_id,
+            "start_name": self.G.nodes[start_id]["name"],
             "target": target_id,
+            "target_name": self.G.nodes[target_id]["name"],
             "distance_m": round(total, 2),
             "path": coords,
             "instructions": instr,
@@ -236,31 +268,54 @@ class IndoorRouter:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    import os
-    nodes_path = os.getenv("INDOOR_NODES", "nodes.csv")
-    edges_path = os.getenv("INDOOR_EDGES", "edges.csv")
     source_crs = os.getenv("INDOOR_SOURCE_CRS", "EPSG:4326")
-    target_crs = os.getenv("INDOOR_TARGET_CRS")  # optional
-    app.state.router = IndoorRouter(
-    source_crs=source_crs,
-    target_crs=target_crs,
-)
+    target_crs = os.getenv("INDOOR_TARGET_CRS")
+    try:
+        app.state.router = IndoorRouter(
+            source_crs=source_crs,
+            target_crs=target_crs,
+        )
+        app.state.router_error = None
+    except Exception as exc:
+        app.state.router = None
+        app.state.router_error = str(exc)
     yield
     app.state.router = None
+    app.state.router_error = None
 
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.get("/route")
-def route(
-    user_lat: float = Query(...),
-    user_lon: float = Query(...),
-    target_name: str = Query(...),
-    user_floor: Optional[int] = Query(None),
-    target_floor: Optional[int] = Query(None),
-):
+class RouteRequest(BaseModel):
+    user_lat: float
+    user_lon: float
+    target_name: str
+    user_floor: Optional[int] = None
+    target_floor: Optional[int] = None
+
+
+def get_router_or_raise() -> IndoorRouter:
     router: IndoorRouter = app.state.router
     if router is None:
-        return {"error": "Router not initialized"}
+        detail = app.state.router_error or "Router not initialized."
+        raise HTTPException(status_code=503, detail=detail)
+    return router
+
+
+def build_route_response(
+    user_lat: float,
+    user_lon: float,
+    target_name: str,
+    user_floor: Optional[int],
+    target_floor: Optional[int],
+) -> dict:
+    router = get_router_or_raise()
     try:
         return router.route(
             user_lon=user_lon,
@@ -269,8 +324,69 @@ def route(
             user_floor=user_floor,
             target_floor=target_floor,
         )
-    except Exception as e:
-        return {"error": str(e)}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/health")
+def health() -> dict:
+    router = app.state.router
+    if router is None:
+        return {
+            "status": "error",
+            "detail": app.state.router_error or "Router not initialized.",
+        }
+    return {
+        "status": "ok",
+        "node_count": len(router.nodes),
+        "edge_count": router.G.number_of_edges(),
+        "floors": router.available_floors(),
+    }
+
+
+@app.get("/metadata")
+def metadata() -> dict:
+    router = get_router_or_raise()
+    floors = router.available_floors()
+    default_floor = 3 if 3 in floors else (floors[0] if floors else None)
+    return {
+        "floors": floors,
+        "default_floor": default_floor,
+        "destinations_by_floor": {
+            str(floor): names
+            for floor, names in router.destinations_by_floor().items()
+        },
+    }
+
+
+@app.get("/route")
+def route_get(
+    user_lat: float = Query(...),
+    user_lon: float = Query(...),
+    target_name: str = Query(...),
+    user_floor: Optional[int] = Query(None),
+    target_floor: Optional[int] = Query(None),
+):
+    return build_route_response(
+        user_lat=user_lat,
+        user_lon=user_lon,
+        target_name=target_name,
+        user_floor=user_floor,
+        target_floor=target_floor,
+    )
+
+
+@app.post("/route")
+def route_post(req: RouteRequest):
+    return build_route_response(
+        user_lat=req.user_lat,
+        user_lon=req.user_lon,
+        target_name=req.target_name,
+        user_floor=req.user_floor,
+        target_floor=req.target_floor,
+    )
 
 
 

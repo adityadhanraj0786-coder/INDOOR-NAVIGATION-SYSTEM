@@ -1,16 +1,14 @@
-// ignore_for_file: use_build_context_synchronously
-
-import 'dart:io';
-import 'maps.dart';
-import 'profile.dart';
-import 'navigation.dart';
-import 'package:flutter/material.dart';
 import 'package:animated_splash_screen/animated_splash_screen.dart';
-import 'package:page_transition/page_transition.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
-import 'package:marquee/marquee.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/material.dart';
+import 'package:marquee/marquee.dart';
+import 'package:page_transition/page_transition.dart';
 import 'package:permission_handler/permission_handler.dart';
+
+import 'maps.dart';
+import 'navigation.dart';
+import 'profile.dart';
 
 void main() {
   runApp(const MyApp());
@@ -24,7 +22,7 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  late AudioPlayer _audioPlayer;
+  late final AudioPlayer _audioPlayer;
 
   @override
   void initState() {
@@ -36,8 +34,8 @@ class _MyAppState extends State<MyApp> {
   Future<void> _playSound() async {
     try {
       await _audioPlayer.play(AssetSource('splash_sound.mp3'));
-    } catch (e) {
-      // ignore error
+    } catch (_) {
+      // The splash should still load even if audio fails.
     }
   }
 
@@ -68,12 +66,12 @@ class _MyAppState extends State<MyApp> {
                     'NavU',
                     textAlign: TextAlign.center,
                     textStyle: const TextStyle(
-                      fontSize: 32.0,
+                      fontSize: 32,
                       fontWeight: FontWeight.bold,
                       color: Colors.blue,
                     ),
-                    colors: [
-                      const Color.fromARGB(255, 225, 255, 0),
+                    colors: const [
+                      Color.fromARGB(255, 225, 255, 0),
                       Colors.green,
                       Colors.purple,
                       Colors.orange,
@@ -81,9 +79,9 @@ class _MyAppState extends State<MyApp> {
                       Colors.yellow,
                       Colors.pink,
                       Colors.cyan,
-                      const Color.fromARGB(255, 0, 157, 255),
+                      Color.fromARGB(255, 0, 157, 255),
                     ],
-                    speed: Duration(milliseconds: 8000),
+                    speed: const Duration(milliseconds: 8000),
                   ),
                 ],
                 pause: Duration.zero,
@@ -95,11 +93,11 @@ class _MyAppState extends State<MyApp> {
                   ColorizeAnimatedText(
                     'Your Pocket Guide',
                     textStyle: const TextStyle(
-                      fontSize: 20.0,
+                      fontSize: 20,
                       fontWeight: FontWeight.w600,
                     ),
-                    colors: [
-                      const Color.fromARGB(255, 209, 249, 8),
+                    colors: const [
+                      Color.fromARGB(255, 209, 249, 8),
                       Colors.green,
                       Colors.purple,
                       Colors.orange,
@@ -107,7 +105,7 @@ class _MyAppState extends State<MyApp> {
                       Colors.yellow,
                       Colors.pink,
                       Colors.cyan,
-                      const Color.fromARGB(255, 0, 157, 255),
+                      Color.fromARGB(255, 0, 157, 255),
                     ],
                     speed: const Duration(milliseconds: 2000),
                   ),
@@ -129,7 +127,9 @@ class _MyAppState extends State<MyApp> {
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.enableMarquee = true});
+
+  final bool enableMarquee;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -158,59 +158,48 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _checkPermissionsOnResume() async {
-    var status = await Permission.location.status;
+    final status = await Permission.location.status;
     if (status.isGranted) {
-      print('Location permission granted on resume');
+      debugPrint('Location permission granted on resume');
     } else {
-      print('Location permission still denied on resume');
+      debugPrint('Location permission still denied on resume');
     }
   }
 
-  Future<bool> _checkAndRequestAllPermissions(BuildContext context) async {
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.location,
-      Permission.camera,
-      Permission.microphone,
-      //Permission.storage,
-      Permission.bluetooth,
-      Permission.bluetoothConnect,
-      Permission.bluetoothScan,
-      //Permission.accessMediaLocation,
-      Permission.activityRecognition,
-      //Permission.scheduleExactAlarm,
-      //Permission.notification,
-      //Permission.manageExternalStorage,
-    ].request();
+  Future<bool> _checkAndRequestLocationPermission() async {
+    final status = await Permission.location.request();
 
-    bool allGranted = statuses.values.every((status) => status.isGranted);
-
-    if (allGranted) {
+    if (status.isGranted) {
       return true;
-    } else {
-      await _showOpenSettingsDialog(context);
-      return false;
     }
+
+    if (!mounted) return false;
+    await _showOpenSettingsDialog();
+    return false;
   }
 
-  Future<void> _showOpenSettingsDialog(BuildContext context) async {
-    await showDialog(
+  Future<void> _showOpenSettingsDialog() async {
+    await showDialog<void>(
       context: context,
-      builder: (BuildContext context) {
+      builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Permissions Required'),
+          title: const Text('Location Required'),
           content: const Text(
-              'Permissions are required for navigation. Please enable all app permissions in the settings.'),
+            'Location permission is required for navigation. '
+            'Please enable location access in settings.',
+          ),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.of(context).pop();
+                Navigator.of(dialogContext).pop();
               },
               child: const Text('Cancel'),
             ),
             TextButton(
               onPressed: () async {
                 await openAppSettings();
-                Navigator.of(context).pop();
+                if (!dialogContext.mounted) return;
+                Navigator.of(dialogContext).pop();
               },
               child: const Text('Open Settings'),
             ),
@@ -243,31 +232,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return Scaffold(
       backgroundColor: const Color.fromARGB(255, 245, 255, 215),
       appBar: AppBar(
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            onPressed: () {
-              exit(0);
-            },
-          ),
-        ],
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
         title: SizedBox(
-
           height: kToolbarHeight,
-          
-          child: Marquee(
-            text:
-                "•NOTE: FOT will remain closed tomorrow•\t\t\t\t•Gate 2 will be closed due to rain blockage•\t\t\t\t•Good luck for the SEC presentation!•\t\t\t\t•Stay tuned for updates!•\t\t\t\t ",
-            style: const TextStyle(fontSize: 20, color: Colors.white),
-            blankSpace: 10.0,
-            velocity: 50.0,
-            startAfter: Duration.zero,
-            pauseAfterRound: Duration.zero,
-            scrollAxis: Axis.horizontal,
-            crossAxisAlignment: CrossAxisAlignment.center,
-          ),
+          child: widget.enableMarquee
+              ? Marquee(
+                  text:
+                      'Live routing is connected to the backend server at 192.168.1.7:8000. '
+                      'Select your floor, choose a destination, and get the route.',
+                  style: const TextStyle(fontSize: 20, color: Colors.white),
+                  blankSpace: 10,
+                  velocity: 50,
+                  startAfter: Duration.zero,
+                  pauseAfterRound: Duration.zero,
+                  scrollAxis: Axis.horizontal,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                )
+              : const Center(
+                  child: Text('NavU', style: TextStyle(color: Colors.white)),
+                ),
         ),
       ),
       body: Column(
@@ -275,11 +259,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           const SizedBox(width: 200),
-          Image.asset(
-            'assets/finalmap.png',
-            width: 150,
-            height: 150,
-          ),
+          Image.asset('assets/finalmap.png', width: 150, height: 150),
           const SizedBox(height: 1),
           ElevatedButton(
             onPressed: () {
@@ -292,20 +272,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
           const SizedBox(height: 50),
           const SizedBox(width: 400),
-          Image.asset(
-            'assets/finalnav.png',
-            width: 150,
-            height: 150,
-          ),
+          Image.asset('assets/finalnav.png', width: 150, height: 150),
           const SizedBox(height: 1),
           ElevatedButton(
             onPressed: () async {
-              bool permissionGranted =
-                  await _checkAndRequestAllPermissions(context);
+              final permissionGranted =
+                  await _checkAndRequestLocationPermission();
               if (!mounted) return;
               if (permissionGranted) {
-                Navigator.push(
-                  context,
+                Navigator.of(this.context).push(
                   MaterialPageRoute(builder: (context) => const Navigation()),
                 );
               }
@@ -332,7 +307,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               color: const Color.fromARGB(255, 255, 57, 57),
               alignment: Alignment.bottomCenter,
               child: const Text(
-                'Menu  🍽️',
+                'Menu',
                 style: TextStyle(color: Colors.white, fontSize: 24),
               ),
             ),

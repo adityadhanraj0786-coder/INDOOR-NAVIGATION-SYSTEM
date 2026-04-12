@@ -1,4 +1,4 @@
-from server import app
+from three_dimension import app
 
 
 if __name__ == "__main__":
