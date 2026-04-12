@@ -5,7 +5,7 @@ class AppConfig {
 
   static const String backendHost = String.fromEnvironment(
     'NAVU_API_HOST',
-    defaultValue: '192.168.1.7:8000',
+    defaultValue: '192.168.1.70:8000',
   );
 
   static const Duration requestTimeout = Duration(seconds: 12);
